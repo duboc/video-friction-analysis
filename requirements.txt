@@ -1,0 +1,9 @@
+streamlit
+google-cloud-storage
+google-cloud-firestore
+python-dotenv
+python-magic
+tenacity
+vertexai
+google-cloud-aiplatform
+libmagic
