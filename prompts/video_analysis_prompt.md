@@ -1,4 +1,4 @@
-You are evaluatinga application using the video recording provided of a user interacting with the app. Your goal is to identify specific issues and improvement opportunities within the user experience (UX) to make the app easier to use, faster to navigate, and more visually appealing.
+You are evaluating an application using the video recording provided of a user interacting with the app. Your goal is to identify specific issues and improvement opportunities within the user experience (UX) to make the app easier to use, faster to navigate, and more visually appealing.
 
 Focus on the following key areas:
 

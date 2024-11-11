@@ -24,28 +24,27 @@ class FirestoreService:
             raise
 
     def save_analysis(self, video_name: str, analysis_result: Dict[str, Any], video_url: str) -> Tuple[bool, Optional[str]]:
-        """
-        Save video analysis results to Firestore.
-        
-        Args:
-            video_name: Name of the video
-            analysis_result: Analysis results dictionary
-            video_url: URL of the video in GCS
-            
-        Returns:
-            Tuple[bool, Optional[str]]: (success, error_message)
-        """
+        """Save video analysis results to Firestore."""
         try:
             doc_ref = self.collection.document(video_name)
-            doc_ref.set({
+            
+            # Create the document structure
+            doc_data = {
                 'video_name': video_name,
                 'video_url': video_url,
-                'analysis_result': analysis_result,
                 'timestamp': firestore.SERVER_TIMESTAMP,
-                'status': 'completed'
-            })
+                'status': 'completed',
+                'analyses_results': {
+                    'video_analysis': analysis_result.get('video_analysis', {}),
+                    'user_story': analysis_result.get('user_story', {}),
+                    'task_backlog': analysis_result.get('task_backlog', {})
+                }
+            }
             
-            self.logger.info(f"Successfully saved analysis for video: {video_name}")
+            # Log the data being saved for debugging
+            self.logger.info(f"Saving analysis data: {doc_data}")
+            
+            doc_ref.set(doc_data)
             return True, None
             
         except Exception as e:
@@ -67,32 +66,38 @@ class FirestoreService:
             doc_ref = self.collection.document(video_name)
             doc = doc_ref.get()
             
+            # Add debug logging
+            self.logger.info(f"Attempting to get analysis for video: {video_name}")
+            self.logger.info(f"Document exists: {doc.exists}")
             if doc.exists:
-                return doc.to_dict()
+                data = doc.to_dict()
+                self.logger.info(f"Document data: {data}")
+                return data
+            
+            # If document doesn't exist, try listing all documents to find a match
+            all_docs = self.collection.stream()
+            for doc in all_docs:
+                self.logger.info(f"Found document with ID: {doc.id}")
+                if doc.get('video_name') == video_name:
+                    return doc.to_dict()
+            
             return None
             
         except Exception as e:
             self.logger.error(f"Error getting analysis for {video_name}: {str(e)}")
             return None
 
-    def get_all_analyses(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get all video analyses with pagination.
-        
-        Args:
-            limit: Maximum number of results to return
-            
-        Returns:
-            List[Dict[str, Any]]: List of analysis results
-        """
+    def get_all_analyses(self) -> List[Dict[str, Any]]:
+        """Get all analyses from Firestore."""
         try:
-            query = (self.collection
-                    .order_by('timestamp', direction=firestore.Query.DESCENDING)
-                    .limit(limit))
-            
-            docs = query.stream()
-            return [{**doc.to_dict(), 'id': doc.id} for doc in docs]
-            
+            docs = self.collection.get()
+            analyses = []
+            for doc in docs:
+                data = doc.to_dict()
+                # Log the retrieved data for debugging
+                self.logger.info(f"Retrieved analysis data: {data}")
+                analyses.append(data)
+            return analyses
         except Exception as e:
             self.logger.error(f"Error getting analyses: {str(e)}")
             return []

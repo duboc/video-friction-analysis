@@ -175,24 +175,27 @@ class StorageService:
 
     def get_video_url(self, video_name: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Get the URL for a video in storage.
+        Get a video URL using default gcloud credentials.
         
         Args:
-            video_name: Name of the video
+            video_name: Name of the video file
             
         Returns:
-            Tuple[bool, Optional[str], Optional[str]]: (success, url, error_message)
+            Tuple[bool, Optional[str], Optional[str]]: (success, url, error)
         """
         try:
-            blob = self.bucket.blob(f"videos/{video_name}")
-            if not blob.exists():
-                return False, None, "Video not found in storage"
+            # Add the videos/ prefix to the blob path
+            blob_path = f"videos/{video_name}"
+            blob = self.bucket.blob(blob_path)
             
-            # Use the public URL instead of signed URL
-            url = self.get_public_url(f"videos/{video_name}")
+            if not blob.exists():
+                return False, None, f"Video not found: {blob_path}"
+                
+            # Use st.video with the public URL
+            url = f"https://storage.googleapis.com/{Settings.BUCKET_NAME}/{blob_path}"
             return True, url, None
             
         except Exception as e:
-            error_msg = f"Error getting video URL: {str(e)}"
+            error_msg = f"Error generating video URL: {str(e)}"
             self.logger.error(error_msg)
             return False, None, error_msg

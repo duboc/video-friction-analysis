@@ -7,3 +7,6 @@ tenacity
 vertexai
 google-cloud-aiplatform
 libmagic
+plotly
+networkx
+pandas

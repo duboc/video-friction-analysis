@@ -66,6 +66,21 @@ check_success() {
     fi
 }
 
+# Function to check if role is already assigned
+check_role() {
+    local project_id="$1"
+    local service_account="$2"
+    local role="$3"
+    
+    gcloud projects get-iam-policy "${project_id}" \
+        --flatten="bindings[].members" \
+        --format='table(bindings.role,bindings.members)' \
+        --filter="bindings.members:${service_account} AND bindings.role:${role}" \
+        2>/dev/null | grep -q "${role}"
+    
+    return $?
+}
+
 # Enable required APIs
 echo "Enabling required APIs..."
 gcloud services enable \
@@ -95,8 +110,7 @@ fi
 # Array of roles to assign
 ROLES=(
     # Cloud Storage
-    "roles/storage.objectViewer"
-    "roles/storage.objectCreator"
+    "roles/storage.objectAdmin"
     
     # Firestore
     "roles/datastore.user"
@@ -118,12 +132,18 @@ ROLES=(
 # Assign roles to service account
 echo "Assigning roles to service account..."
 for role in "${ROLES[@]}"; do
-    echo "Adding role: ${role}"
-    gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-        --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
-        --role="${role}" \
-        --quiet
-    check_success "Role ${role} assigned"
+    echo "Checking role: ${role}"
+    if check_role "${PROJECT_ID}" "serviceAccount:${SERVICE_ACCOUNT_EMAIL}" "${role}"; then
+        echo -e "${GREEN}✓ Role ${role} already assigned${NC}"
+    else
+        echo "Adding role: ${role}"
+        gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+            --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+            --role="${role}" \
+            --condition=None \
+            --quiet
+        check_success "Role ${role} assigned"
+    fi
 done
 
 # Create and configure a new bucket if specified
@@ -131,24 +151,37 @@ read -p "Do you want to create a new Cloud Storage bucket for video storage? (y/
 if [[ $CREATE_BUCKET =~ ^[Yy]$ ]]; then
     read -p "Enter bucket name: " BUCKET_NAME
     
-    # Create bucket
+    # Create bucket using gcloud
     echo "Creating Cloud Storage bucket..."
-    gsutil mb -p "${PROJECT_ID}" -l us-central1 "gs://${BUCKET_NAME}"
+    gcloud storage buckets create "gs://${BUCKET_NAME}" \
+        --project="${PROJECT_ID}" \
+        --location=us-central1 \
+        --uniform-bucket-level-access
     check_success "Bucket created"
     
-    # Set bucket permissions
+    # Set bucket permissions using gcloud
     echo "Setting bucket permissions..."
-    gsutil iam ch "serviceAccount:${SERVICE_ACCOUNT_EMAIL}:objectViewer" "gs://${BUCKET_NAME}"
-    gsutil iam ch "serviceAccount:${SERVICE_ACCOUNT_EMAIL}:objectCreator" "gs://${BUCKET_NAME}"
+    gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
+        --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+        --role="roles/storage.objectAdmin" \
+        --condition=None
     check_success "Bucket permissions set"
 fi
 
 # Create Firestore database if it doesn't exist
 read -p "Do you want to create a new Firestore database? (y/n) " CREATE_FIRESTORE
 if [[ $CREATE_FIRESTORE =~ ^[Yy]$ ]]; then
-    echo "Creating Firestore database..."
-    gcloud firestore databases create --project="${PROJECT_ID}" --region=us-central1
-    check_success "Firestore database created"
+    echo "Checking if Firestore database exists..."
+    if ! gcloud firestore databases list --project="${PROJECT_ID}" 2>/dev/null | grep -q "(default)"; then
+        echo "Creating Firestore database..."
+        gcloud firestore databases create \
+            --project="${PROJECT_ID}" \
+            --region=us-central1 \
+            --type=firestore-native
+        check_success "Firestore database created"
+    else
+        echo -e "${GREEN}✓ Firestore database already exists${NC}"
+    fi
 fi
 
 echo -e "${GREEN}Setup completed successfully!${NC}"
